@@ -9,10 +9,12 @@
         input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
         button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0056b3; }
+        .reset-btn { background: #6c757d !important; }
+        .reset-btn:hover { background: #5a6268 !important; }
         .end-btn { background: #dc3545 !important; }
         .end-btn:hover { background: #c82333 !important; }
         #callArea, #incomingCall, #activeCall { display: none; margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px; }
-        #authStatus { color: red; font-weight: bold; margin-top: 10px; }
+        #authStatus { font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -23,6 +25,7 @@
         <input type="password" id="password" placeholder="Lösenord (minst 6 tecken)">
         <button id="regBtn">Skapa konto</button>
         <button id="loginBtn">Logga in</button>
+        <button class="reset-btn" id="resetBtn">Glömt lösenord?</button>
         <p id="authStatus"></p>
     </div>
 
@@ -52,7 +55,7 @@
     <!-- Firebase & WebRTC Script -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -81,11 +84,12 @@
             ]
         };
 
-        // Koppla knappar via JavaScript istället för inline-funktioner för att undvika fönsterlåsningar
+        // Skapa konto
         document.getElementById('regBtn').addEventListener('click', async () => {
             const email = document.getElementById('email').value.trim();
             const pass = document.getElementById('password').value;
             const statusEl = document.getElementById('authStatus');
+            statusEl.style.color = "red";
             
             if (!email || !pass) {
                 statusEl.innerText = "Fyll i både e-post och lösenord!";
@@ -102,10 +106,12 @@
             }
         });
 
+        // Logga in
         document.getElementById('loginBtn').addEventListener('click', async () => {
             const email = document.getElementById('email').value.trim();
             const pass = document.getElementById('password').value;
             const statusEl = document.getElementById('authStatus');
+            statusEl.style.color = "red";
 
             if (!email || !pass) {
                 statusEl.innerText = "Fyll i både e-post och lösenord!";
@@ -117,6 +123,30 @@
                 await signInWithEmailAndPassword(auth, email, pass);
                 statusEl.innerText = "";
             } catch (e) {
+                statusEl.innerText = "Fel: " + e.message;
+                console.error(e);
+            }
+        });
+
+        // Glömt lösenord
+        document.getElementById('resetBtn').addEventListener('click', async () => {
+            const email = document.getElementById('email').value.trim();
+            const statusEl = document.getElementById('authStatus');
+            
+            if (!email) {
+                statusEl.style.color = "red";
+                statusEl.innerText = "Fyll i din e-postadress i fältet ovan först!";
+                return;
+            }
+
+            statusEl.style.color = "blue";
+            statusEl.innerText = "Skickar återställningsmejl...";
+            try {
+                await sendPasswordResetEmail(auth, email);
+                statusEl.style.color = "green";
+                statusEl.innerText = "E-post för lösenordsåterställning har skickats!";
+            } catch (e) {
+                statusEl.style.color = "red";
                 statusEl.innerText = "Fel: " + e.message;
                 console.error(e);
             }
