@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <title>Min Gratis Chatt & Samtal</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f4f9; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .end-btn { background: #dc3545 !important; }
+        .end-btn:hover { background: #c82333 !important; }
+        #callArea, #incomingCall, #activeCall { display: none; margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 4px; }
+        #authStatus { color: red; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="box" id="authBox">
+        <h2>Logga in / Skapa konto</h2>
+        <input type="email" id="email" placeholder="E-postadress">
+        <input type="password" id="password" placeholder="Lösenord (minst 6 tecken)">
+        <button id="regBtn">Skapa konto</button>
+        <button id="loginBtn">Logga in</button>
+        <p id="authStatus"></p>
+    </div>
+
+    <div class="box" id="appBox" style="display:none;">
+        <h2>Välkommen! Ditt ID: <span id="myId"></span></h2>
+        
+        <div id="callArea">
+            <h3>Starta röstsamtal</h3>
+            <input type="text" id="targetId" placeholder="Ange mottagarens 6-siffriga ID">
+            <button id="callBtn">Ring</button>
+        </div>
+
+        <div id="incomingCall">
+            <p><strong>Inkommande samtal!</strong></p>
+            <button id="answerBtn">Svara</button>
+        </div>
+
+        <div id="activeCall">
+            <p style="color: green; font-weight: bold;">Samtal pågår...</p>
+            <button class="end-btn" id="endBtn">Lägg på</button>
+        </div>
+
+        <audio id="localAudio" autoplay muted></audio>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <!-- Firebase & WebRTC Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDe8FuE5_SU_X8r63dDIa19geGQAeCQCJM",
+            authDomain: "minkommunikation-b6c28.firebaseapp.com",
+            projectId: "minkommunikation-b6c28",
+            storageBucket: "minkommunikation-b6c28.firebasestorage.app",
+            messagingSenderId: "980227882228",
+            appId: "1:980227882228:web:8b5e30c93c4db37c79b2a1",
+            measurementId: "G-LTG14RKGSS"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let localStream;
+        let peerConnection;
+        let currentUserId;
+        let ringInterval = null;
+
+        const servers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        // Koppla knappar via JavaScript istället för inline-funktioner för att undvika fönsterlåsningar
+        document.getElementById('regBtn').addEventListener('click', async () => {
+            const email = document.getElementById('email').value.trim();
+            const pass = document.getElementById('password').value;
+            const statusEl = document.getElementById('authStatus');
+            
+            if (!email || !pass) {
+                statusEl.innerText = "Fyll i både e-post och lösenord!";
+                return;
+            }
+
+            statusEl.innerText = "Skapar konto...";
+            try {
+                await createUserWithEmailAndPassword(auth, email, pass);
+                statusEl.innerText = "";
+            } catch (e) {
+                statusEl.innerText = "Fel: " + e.message;
+                console.error(e);
+            }
+        });
+
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('email').value.trim();
+            const pass = document.getElementById('password').value;
+            const statusEl = document.getElementById('authStatus');
+
+            if (!email || !pass) {
+                statusEl.innerText = "Fyll i både e-post och lösenord!";
+                return;
+            }
+
+            statusEl.innerText = "Loggar in...";
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+                statusEl.innerText = "";
+            } catch (e) {
+                statusEl.innerText = "Fel: " + e.message;
+                console.error(e);
+            }
+        });
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUserId = user.uid.substring(0, 6);
+                document.getElementById('authBox').style.display = 'none';
+                document.getElementById('appBox').style.display = 'block';
+                document.getElementById('myId').innerText = currentUserId;
+                document.getElementById('callArea').style.display = 'block';
+
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    document.getElementById('localAudio').srcObject = localStream;
+                } catch (err) {
+                    console.error("Mikrofonfel:", err);
+                }
+
+                listenForCalls();
+            }
+        });
+
+        function createPeerConnection(targetId) {
+            peerConnection = new RTCPeerConnection(servers);
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
+            peerConnection.ontrack = event => {
+                if (ringInterval) clearInterval(ringInterval);
+                document.getElementById('remoteAudio').srcObject = event.streams[0];
+                document.getElementById('callArea').style.display = 'none';
+                document.getElementById('incomingCall').style.display = 'none';
+                document.getElementById('activeCall').style.display = 'block';
+            };
+
+            peerConnection.onicecandidate = async event => {
+                if (event.candidate) {
+                    await setDoc(doc(db, 'calls', targetId, 'candidates', 'c_' + Math.random()), event.candidate.toJSON());
+                }
+            };
+        }
+
+        document.getElementById('callBtn').addEventListener('click', async () => {
+            const targetId = document.getElementById('targetId').value.trim();
+            if (!targetId) return alert("Ange ett ID att ringa till!");
+            
+            createPeerConnection(targetId);
+
+            const callDoc = doc(db, 'calls', targetId);
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            await setDoc(callDoc, { offer: { type: offer.type, sdp: offer.sdp }, caller: currentUserId });
+
+            onSnapshot(callDoc, async snapshot => {
+                const data = snapshot.data();
+                if (!peerConnection.currentRemoteDescription && data?.answer) {
+                    const answer = new RTCSessionDescription(data.answer);
+                    await peerConnection.setRemoteDescription(answer);
+                }
+            });
+
+            onSnapshot(collection(db, 'calls', targetId, 'candidates'), snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        let candidate = new RTCIceCandidate(change.doc.data());
+                        await peerConnection.addIceCandidate(candidate);
+                    }
+                });
+            });
+        });
+
+        function listenForCalls() {
+            onSnapshot(doc(db, 'calls', currentUserId), async snapshot => {
+                const data = snapshot.data();
+                if (data && data.offer && !peerConnection) {
+                    document.getElementById('incomingCall').style.display = 'block';
+                    startRingLoop();
+                }
+            });
+        }
+
+        function startRingLoop() {
+            if (ringInterval) return;
+            playSingleBeep();
+            ringInterval = setInterval(() => {
+                playSingleBeep();
+            }, 2000);
+        }
+
+        function playSingleBeep() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 800);
+            } catch (e) {}
+        }
+
+        document.getElementById('answerBtn').addEventListener('click', async () => {
+            if (ringInterval) clearInterval(ringInterval);
+            document.getElementById('incomingCall').style.display = 'none';
+            const callDoc = doc(db, 'calls', currentUserId);
+            const snapshot = await getDoc(callDoc);
+            const data = snapshot.data();
+
+            createPeerConnection(currentUserId);
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            await updateDoc(callDoc, { answer: { type: answer.type, sdp: answer.sdp } });
+
+            onSnapshot(collection(db, 'calls', currentUserId, 'candidates'), snapshot => {
+                snapshot.docChanges().forEach(async change => {
+                    if (change.type === 'added') {
+                        let candidate = new RTCIceCandidate(change.doc.data());
+                        await peerConnection.addIceCandidate(candidate);
+                    }
+                });
+            });
+        });
+
+        document.getElementById('endBtn').addEventListener('click', async () => {
+            if (ringInterval) clearInterval(ringInterval);
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            try {
+                await deleteDoc(doc(db, 'calls', currentUserId));
+            } catch (e) {}
+            location.reload();
+        });
+    </script>
+</body>
+</html>
