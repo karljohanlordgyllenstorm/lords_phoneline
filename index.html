@@ -149,7 +149,6 @@
                     </div>
 
                     <div id="usersList" class="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-                        <!-- Dynamiska kontakter hamnar här -->
                         <div class="text-center py-8 text-xs text-slate-500">
                             Söker efter andra användare...
                         </div>
@@ -172,9 +171,12 @@
                         </button>
                     </div>
 
-                    <!-- Aktiv Mottagare indikator för Chatt -->
-                    <div id="activeChatTarget" class="text-xs text-slate-400 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/40">
-                        Chattkanal: <span id="chatTargetDisplay" class="font-bold font-mono text-sky-400">Alla / Ingen vald</span>
+                    <!-- Aktiv Mottagare & Rensa-knapp för Chatt -->
+                    <div id="activeChatTarget" class="flex items-center justify-between bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/45 gap-3">
+                        <span class="text-xs text-slate-400">Chatt: <span id="chatTargetDisplay" class="font-bold font-mono text-sky-400">Ingen vald</span></span>
+                        <button id="clearChatBtn" class="hidden text-xs text-rose-400 hover:text-rose-300 transition flex items-center gap-1">
+                            <i class="fa-solid fa-trash-can"></i> Rensa
+                        </button>
                     </div>
                 </div>
 
@@ -255,7 +257,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, collection, addDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, getDocs, onSnapshot, updateDoc, deleteDoc, collection, addDoc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDe8FuE5_SU_X8r63dDIa19geGQAeCQCJM",
@@ -375,7 +377,6 @@
                 document.getElementById('myIdHeader').innerText = currentUserId;
                 document.getElementById('userEmailDisplay').innerText = currentUserEmail;
 
-                // Spara användare i online-listan
                 await setDoc(doc(db, 'users', currentUserId), {
                     email: currentUserEmail,
                     id: currentUserId,
@@ -383,10 +384,8 @@
                     lastSeen: serverTimestamp()
                 });
 
-                // Lyssna på aktiva användare
                 listenForOnlineUsers();
 
-                // Starta mikrofon
                 try {
                     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     document.getElementById('localAudio').srcObject = localStream;
@@ -442,7 +441,6 @@
                             </div>
                         `;
 
-                        // Klickhändelser för snabb-samtal och chatt
                         userCard.querySelector('.call-user-btn').addEventListener('click', (e) => {
                             e.stopPropagation();
                             document.getElementById('targetId').value = data.id;
@@ -474,10 +472,11 @@
         function selectChatTarget(targetId) {
             document.getElementById('targetId').value = targetId;
             document.getElementById('chatTargetDisplay').innerText = targetId;
+            document.getElementById('clearChatBtn').classList.remove('hidden');
             loadChatMessages(targetId);
         }
 
-        // --- REALTIDS-CHATT ---
+        // --- REALTIDS-CHATT & HISTORIK ---
         function loadChatMessages(targetId) {
             if (activeChatUnsubscribe) activeChatUnsubscribe();
 
@@ -492,7 +491,7 @@
                     chatMessagesEl.innerHTML = `
                         <div class="text-center my-6">
                             <span class="text-xs bg-slate-800/80 text-slate-400 px-3 py-1.5 rounded-full border border-slate-700/50">
-                                Inga meddelanden ännu. Skriv första meddelandet nedan!
+                                Ingen tidigare historik. Skriv ett meddelande nedan!
                             </span>
                         </div>
                     `;
@@ -549,11 +548,30 @@
                 time: timeStr
             });
 
-            // Se till att chatten laddas om man inte klickat tidigare
             if (document.getElementById('chatTargetDisplay').innerText !== targetId) {
                 selectChatTarget(targetId);
             }
         }
+
+        // --- RENSA CHATT-HISTORIK ---
+        document.getElementById('clearChatBtn').addEventListener('click', async () => {
+            const targetId = document.getElementById('targetId').value.trim();
+            if (!targetId) return;
+
+            if (!confirm("Är du säker på att du vill radera all chatthistorik med denna användare?")) return;
+
+            const chatId = [currentUserId, targetId].sort().join('_');
+            const messagesRef = collection(db, 'chats', chatId, 'messages');
+
+            try {
+                const snapshot = await getDocs(messagesRef);
+                const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
+                await Promise.all(deletePromises);
+            } catch (e) {
+                console.error("Kunde inte radera chatt:", e);
+                alert("Ett fel uppstod när chatten skulle raderas.");
+            }
+        });
 
         function escapeHtml(text) {
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -709,25 +727,3 @@
                         let candidate = new RTCIceCandidate(change.doc.data());
                         await peerConnection.addIceCandidate(candidate);
                     }
-                });
-            });
-        });
-
-        document.getElementById('endBtn').addEventListener('click', async () => {
-            if (ringInterval) clearInterval(ringInterval);
-            playEndSound();
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-            try {
-                await deleteDoc(doc(db, 'calls', currentUserId));
-            } catch (e) {}
-            setTimeout(() => location.reload(), 300);
-        });
-    </script>
-</body>
-</html>
