@@ -59,7 +59,7 @@
     <!-- Main Container -->
     <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col justify-center items-center">
 
-        <!-- AUTH BOX (Logga in / Skapa konto / Glömt lösenord) -->
+        <!-- AUTH BOX (Logga in / Skapa konto) -->
         <div id="authBox" class="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl transition-all">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white shadow-xl shadow-sky-500/20 ring-1 ring-white/20">
@@ -139,7 +139,7 @@
                     </button>
                 </div>
 
-                <!-- Kontaktlista (Aktiva användare) -->
+                <!-- Kontaktlista -->
                 <div class="flex-1 px-4 py-2 flex flex-col min-h-0">
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -171,7 +171,7 @@
                         </button>
                     </div>
 
-                    <!-- Aktiv Mottagare & Rensa-knapp för Chatt -->
+                    <!-- Chattinfo & Rensa-knapp -->
                     <div id="activeChatTarget" class="flex items-center justify-between bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/45 gap-3">
                         <span class="text-xs text-slate-400">Chatt: <span id="chatTargetDisplay" class="font-bold font-mono text-sky-400">Ingen vald</span></span>
                         <button id="clearChatBtn" class="hidden text-xs text-rose-400 hover:text-rose-300 transition flex items-center gap-1">
@@ -180,9 +180,8 @@
                     </div>
                 </div>
 
-                <!-- Samtalsvyer (Overlay-kort för inkommande / aktivt samtal) -->
+                <!-- Samtalsvyer (Overlay) -->
                 <div id="callOverlay" class="p-4 border-b border-slate-800">
-                    <!-- Inkommande samtal -->
                     <div id="incomingCall" class="hidden bg-gradient-to-r from-sky-900/60 to-indigo-900/60 border border-sky-500/40 p-4 rounded-xl flex items-center justify-between animate-bounce">
                         <div class="flex items-center space-x-3">
                             <div class="w-10 h-10 rounded-full bg-sky-500 text-white flex items-center justify-center text-lg animate-pulse">
@@ -198,7 +197,6 @@
                         </button>
                     </div>
 
-                    <!-- Aktivt samtal -->
                     <div id="activeCall" class="hidden bg-slate-950/80 border border-emerald-500/30 p-4 rounded-xl flex items-center justify-between">
                         <div class="flex items-center space-x-4">
                             <div class="flex items-end space-x-1 h-7">
@@ -345,7 +343,7 @@
             try {
                 await sendPasswordResetEmail(auth, email);
                 statusEl.className = "text-xs text-center font-medium text-emerald-400";
-                statusEl.innerText = "E-post för lösenordsåterställning har skickats!";
+                statusEl.innerText = "Återställningsmejl har skickats!";
             } catch (e) {
                 statusEl.className = "text-xs text-center font-medium text-rose-400";
                 statusEl.innerText = "Fel: " + e.message;
@@ -363,7 +361,7 @@
             location.reload();
         });
 
-        // --- AUTH STATUS CHANGE (INLOGGAD) ---
+        // --- AUTH STATUS CHANGE ---
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUserId = user.uid.substring(0, 6);
@@ -377,12 +375,16 @@
                 document.getElementById('myIdHeader').innerText = currentUserId;
                 document.getElementById('userEmailDisplay').innerText = currentUserEmail;
 
-                await setDoc(doc(db, 'users', currentUserId), {
-                    email: currentUserEmail,
-                    id: currentUserId,
-                    online: true,
-                    lastSeen: serverTimestamp()
-                });
+                try {
+                    await setDoc(doc(db, 'users', currentUserId), {
+                        email: currentUserEmail,
+                        id: currentUserId,
+                        online: true,
+                        lastSeen: serverTimestamp()
+                    }, { merge: true });
+                } catch(e) {
+                    console.error("Kunde inte spara användarstatus:", e);
+                }
 
                 listenForOnlineUsers();
 
@@ -397,7 +399,7 @@
             }
         });
 
-        // --- KOPIERA DITT ID ---
+        // --- KOPIERA ID ---
         document.getElementById('copyIdBtn').addEventListener('click', () => {
             navigator.clipboard.writeText(currentUserId);
             const msg = document.getElementById('copyMsg');
@@ -405,7 +407,7 @@
             setTimeout(() => msg.innerText = "Kopiera", 2000);
         });
 
-        // --- KONTAKTLISTA (AKTIVA ANVÄNDARE) ---
+        // --- KONTAKTLISTA ---
         function listenForOnlineUsers() {
             onSnapshot(collection(db, 'users'), (snapshot) => {
                 const usersListEl = document.getElementById('usersList');
@@ -432,10 +434,10 @@
                                 </div>
                             </div>
                             <div class="flex items-center space-x-1">
-                                <button class="call-user-btn p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition" title="Ring ${data.id}">
+                                <button class="call-user-btn p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition" title="Ring">
                                     <i class="fa-solid fa-phone text-xs"></i>
                                 </button>
-                                <button class="chat-user-btn p-1.5 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition" title="Chatta med ${data.id}">
+                                <button class="chat-user-btn p-1.5 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition" title="Chatta">
                                     <i class="fa-solid fa-comment text-xs"></i>
                                 </button>
                             </div>
@@ -461,14 +463,13 @@
                 });
 
                 document.getElementById('onlineCount').innerText = count;
-
                 if (count === 0) {
                     usersListEl.innerHTML = `<div class="text-center py-8 text-xs text-slate-500">Inga andra användare online just nu.</div>`;
                 }
             });
         }
 
-        // --- VÄLJ CHATT-MOTTAGARE ---
+        // --- VÄLJ CHATT ---
         function selectChatTarget(targetId) {
             document.getElementById('targetId').value = targetId;
             document.getElementById('chatTargetDisplay').innerText = targetId;
@@ -476,7 +477,7 @@
             loadChatMessages(targetId);
         }
 
-        // --- REALTIDS-CHATT & HISTORIK ---
+        // --- CHATT & HISTORIK ---
         function loadChatMessages(targetId) {
             if (activeChatUnsubscribe) activeChatUnsubscribe();
 
@@ -506,7 +507,7 @@
 
                     msgDiv.innerHTML = `
                         <div class="max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-md ${isMe ? 'bg-sky-600 text-white rounded-br-none' : 'bg-slate-800 text-slate-100 border border-slate-700/60 rounded-bl-none'}">
-                            <p>${escapeHtml(msg.text)}</p>
+                            <p>${escapeHtml(msg.text || '')}</p>
                             <span class="text-[9px] opacity-70 block text-right mt-1">${msg.time || ''}</span>
                         </div>
                     `;
@@ -517,7 +518,7 @@
             });
         }
 
-        // --- SKICKA CHATT-MEDDELANDE ---
+        // --- SKICKA MEDDELANDE ---
         document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
         document.getElementById('chatInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendChatMessage();
@@ -540,25 +541,29 @@
 
             inputEl.value = '';
 
-            await addDoc(collection(db, 'chats', chatId, 'messages'), {
-                text: text,
-                sender: currentUserId,
-                receiver: targetId,
-                timestamp: serverTimestamp(),
-                time: timeStr
-            });
+            try {
+                await addDoc(collection(db, 'chats', chatId, 'messages'), {
+                    text: text,
+                    sender: currentUserId,
+                    receiver: targetId,
+                    timestamp: serverTimestamp(),
+                    time: timeStr
+                });
+            } catch (e) {
+                console.error("Kunde inte skicka meddelande:", e);
+            }
 
             if (document.getElementById('chatTargetDisplay').innerText !== targetId) {
                 selectChatTarget(targetId);
             }
         }
 
-        // --- RENSA CHATT-HISTORIK ---
+        // --- RENSA CHATT ---
         document.getElementById('clearChatBtn').addEventListener('click', async () => {
             const targetId = document.getElementById('targetId').value.trim();
             if (!targetId) return;
 
-            if (!confirm("Är du säker på att du vill radera all chatthistorik med denna användare?")) return;
+            if (!confirm("Vill du rensa all chatthistorik med denna användare?")) return;
 
             const chatId = [currentUserId, targetId].sort().join('_');
             const messagesRef = collection(db, 'chats', chatId, 'messages');
@@ -569,7 +574,6 @@
                 await Promise.all(deletePromises);
             } catch (e) {
                 console.error("Kunde inte radera chatt:", e);
-                alert("Ett fel uppstod när chatten skulle raderas.");
             }
         });
 
@@ -577,13 +581,15 @@
             return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
-        // --- WEBRTC RÖSTSAMTALS-LOGIK ---
+        // --- WEBRTC ---
         function createPeerConnection(targetId) {
             peerConnection = new RTCPeerConnection(servers);
 
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
 
             peerConnection.ontrack = event => {
                 if (ringInterval) clearInterval(ringInterval);
@@ -594,7 +600,9 @@
 
             peerConnection.onicecandidate = async event => {
                 if (event.candidate) {
-                    await setDoc(doc(db, 'calls', targetId, 'candidates', 'c_' + Math.random()), event.candidate.toJSON());
+                    try {
+                        await setDoc(doc(db, 'calls', targetId, 'candidates', 'c_' + Math.random()), event.candidate.toJSON());
+                    } catch(e) {}
                 }
             };
         }
@@ -623,7 +631,7 @@
                 snapshot.docChanges().forEach(async change => {
                     if (change.type === 'added') {
                         let candidate = new RTCIceCandidate(change.doc.data());
-                        await peerConnection.addIceCandidate(candidate);
+                        try { await peerConnection.addIceCandidate(candidate); } catch(e){}
                     }
                 });
             });
@@ -642,9 +650,7 @@
         function startRingLoop() {
             if (ringInterval) return;
             playSingleBeep();
-            ringInterval = setInterval(() => {
-                playSingleBeep();
-            }, 2000);
+            ringInterval = setInterval(() => { playSingleBeep(); }, 2000);
         }
 
         function playSingleBeep() {
@@ -652,14 +658,11 @@
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
-                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
                 gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
-                
                 oscillator.start();
                 setTimeout(() => oscillator.stop(), 800);
             } catch (e) {}
@@ -670,16 +673,12 @@
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
-                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime);
                 oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
-                
                 gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
-                
                 oscillator.start();
                 setTimeout(() => oscillator.stop(), 300);
             } catch (e) {}
@@ -690,16 +689,12 @@
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
-                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
                 oscillator.frequency.setValueAtTime(220, audioCtx.currentTime + 0.15);
-                
                 gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
-                
                 oscillator.start();
                 setTimeout(() => oscillator.stop(), 300);
             } catch (e) {}
@@ -725,5 +720,27 @@
                 snapshot.docChanges().forEach(async change => {
                     if (change.type === 'added') {
                         let candidate = new RTCIceCandidate(change.doc.data());
-                        await peerConnection.addIceCandidate(candidate);
+                        try { await peerConnection.addIceCandidate(candidate); } catch(e){}
                     }
+                });
+            });
+        });
+
+        document.getElementById('endBtn').addEventListener('click', async () => {
+            if (ringInterval) clearInterval(ringInterval);
+            playEndSound();
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            try {
+                await deleteDoc(doc(db, 'calls', currentUserId));
+            } catch (e) {}
+            setTimeout(() => location.reload(), 300);
+        });
+    </script>
+</body>
+</html>
