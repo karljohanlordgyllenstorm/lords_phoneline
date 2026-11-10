@@ -259,8 +259,51 @@
             } catch (e) {}
         }
 
+        // Ljud när man svarar (en gladare, stigande ton)
+        function playAnswerSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+                
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 300);
+            } catch (e) {}
+        }
+
+        // Ljud när man lägger på (en fallande ton)
+        function playEndSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
+                oscillator.frequency.setValueAtTime(220, audioCtx.currentTime + 0.15); // A3
+                
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 300);
+            } catch (e) {}
+        }
+
         document.getElementById('answerBtn').addEventListener('click', async () => {
             if (ringInterval) clearInterval(ringInterval);
+            playAnswerSound();
             document.getElementById('incomingCall').style.display = 'none';
             const callDoc = doc(db, 'calls', currentUserId);
             const snapshot = await getDoc(callDoc);
@@ -286,6 +329,7 @@
 
         document.getElementById('endBtn').addEventListener('click', async () => {
             if (ringInterval) clearInterval(ringInterval);
+            playEndSound();
             if (peerConnection) {
                 peerConnection.close();
                 peerConnection = null;
@@ -296,7 +340,7 @@
             try {
                 await deleteDoc(doc(db, 'calls', currentUserId));
             } catch (e) {}
-            location.reload();
+            setTimeout(() => location.reload(), 300); // Vänta en kort stund så ljudet spelas upp
         });
     </script>
 </body>
